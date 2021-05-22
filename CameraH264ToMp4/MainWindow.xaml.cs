@@ -91,7 +91,9 @@ namespace CameraH264ToMp4
                             progressTB.Dispatcher.Invoke(() => { progressTB.Text = progress; });
                         });
 
-                        var hourOutputFilePath = Path.Combine(outputFolder, folderName, $"{folderName}-{hour}.mp4");
+                        var outputFolderPath = Path.Combine(outputFolder, folderName);
+                        var hourOutputFilePath = Path.Combine(outputFolderPath, $"{folderName}-{hour}.mp4");
+                        Directory.CreateDirectory(outputFolderPath);
                         var hourArgs = $"-i \"concat:{string.Join('|', files)}\" -c copy -y -nostdin {hourOutputFilePath}";
                         await ffmpeg.ExecuteMuxAsync(hourArgs);
                     }
