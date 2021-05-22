@@ -2,8 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using System.Windows;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using Microsoft.WindowsAPICodePack.Shell;
@@ -15,59 +13,73 @@ namespace CameraH264ToMp4
     /// </summary>
     public partial class MainWindow : Window
     {
-        string ffmpegPath = "";
-        IEnumerable<string> folders;
-        string outputFolder;
+        private string ffmpegPath;
+        public string FFmpegPath
+        {
+            get { return ffmpegPath; }
+            set { ffmpegPath = value; ffmpegPathTB.Text = value; }
+        }
+
+        private string outputFolder;
+        public string OutputFolder
+        {
+            get { return outputFolder; }
+            set { outputFolder = value; outputFolderTB.Text = value; }
+        }
+
+        IEnumerable<string> inputFolders;
 
         public MainWindow()
         {
             InitializeComponent();
-            ffmpegPath = @"C:\Users\Public\Programy\FFMpeg\ffmpeg-4.2.1-win64-static\bin\ffmpeg.exe";
-            outputFolder = @"D:\Kamera";
-            outputFolderTB.Text = outputFolder;
+            FFmpegPath = @"C:\Users\Public\Programy\FFMpeg\ffmpeg-4.2.1-win64-static\bin\ffmpeg.exe";
+            OutputFolder = @"D:\Kamera";
         }
 
-        private async void Button_Click(object sender, RoutedEventArgs e)
+        private void ChooseInputFolders_Click(object sender, RoutedEventArgs e)
+        {
+            ShowFileDialog(dialog =>
+            {
+                dialog.InitialDirectory = @"C:\";
+                dialog.IsFolderPicker = true;
+                dialog.Multiselect = true;
+            }, dialog => inputFolders = dialog.FileNames.ToList());
+        }
+
+        private void ChooseFFmpeg_Click(object sender, RoutedEventArgs e)
+        {
+            ShowFileDialog(dialog =>
+            {
+                dialog.InitialDirectory = KnownFolders.Downloads.Path;
+                dialog.IsFolderPicker = false;
+            }, dialog => FFmpegPath = dialog.FileName);
+        }
+
+        private void ChooseOutputFolder_Click(object sender, RoutedEventArgs e)
+        {
+            ShowFileDialog(dialog =>
+            {
+                dialog.InitialDirectory = @"D:\Kamera";
+                dialog.IsFolderPicker = true;
+                dialog.Multiselect = false;
+            }, dialog => OutputFolder = dialog.FileName);
+        }
+
+        private void ShowFileDialog(Action<CommonOpenFileDialog> configure, Action<CommonOpenFileDialog> onResults)
         {
             CommonOpenFileDialog dialog = new CommonOpenFileDialog();
-            dialog.InitialDirectory = @"C:\";
-            dialog.IsFolderPicker = true;
-            dialog.Multiselect = true;
+            configure(dialog);
             if (dialog.ShowDialog() == CommonFileDialogResult.Ok)
             {
-                folders = dialog.FileNames.ToList();
+                onResults(dialog);
             }
         }
 
-        private void Button_Click_1(object sender, RoutedEventArgs e)
+        private async void Start_Click(object sender, RoutedEventArgs e)
         {
-            CommonOpenFileDialog dialog = new CommonOpenFileDialog();
-            dialog.InitialDirectory = KnownFolders.Downloads.Path;
-            dialog.IsFolderPicker = false;
-            if (dialog.ShowDialog() == CommonFileDialogResult.Ok)
-            {
-                ffmpegPath = dialog.FileName;
-            }
-        }
+            var ffmpeg = new FFmpeg(FFmpegPath);
 
-        private void Button_Click_3(object sender, RoutedEventArgs e)
-        {
-            CommonOpenFileDialog dialog = new CommonOpenFileDialog();
-            dialog.InitialDirectory = @"D:\Kamera";
-            dialog.IsFolderPicker = true;
-            dialog.Multiselect = false;
-            if (dialog.ShowDialog() == CommonFileDialogResult.Ok)
-            {
-                outputFolder = dialog.FileName;
-                outputFolderTB.Text = outputFolder;
-            }
-        }
-
-        private async void Button_Click_4(object sender, RoutedEventArgs e)
-        {
-            var ffmpeg = new FFmpeg(ffmpegPath);
-
-            foreach (var dayFolder in folders)
+            foreach (var dayFolder in inputFolders)
             {
                 var folderName = Path.GetFileName(dayFolder);
                 //var outputFilePath = Path.Combine(dayFolder, $"{folderName}.mp4");
@@ -91,7 +103,7 @@ namespace CameraH264ToMp4
                             progressTB.Dispatcher.Invoke(() => { progressTB.Text = progress; });
                         });
 
-                        var outputFolderPath = Path.Combine(outputFolder, folderName);
+                        var outputFolderPath = Path.Combine(OutputFolder, folderName);
                         var hourOutputFilePath = Path.Combine(outputFolderPath, $"{folderName}-{hour}.mp4");
                         Directory.CreateDirectory(outputFolderPath);
                         var hourArgs = $"-i \"concat:{string.Join('|', files)}\" -c copy -y -nostdin {hourOutputFilePath}";
