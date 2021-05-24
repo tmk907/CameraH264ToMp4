@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Windows;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using Microsoft.WindowsAPICodePack.Shell;
@@ -13,34 +15,34 @@ namespace CameraH264ToMp4
     /// </summary>
     public partial class MainWindow : Window
     {
-        private string ffmpegPath;
         public string FFmpegPath
         {
-            get { return ffmpegPath; }
-            set { ffmpegPath = value; ffmpegPathTB.Text = value; }
+            get { return Settings.FFmpegPath; }
+            set { Settings.FFmpegPath = value; SaveSettings(Settings); ffmpegPathTB.Text = value; }
         }
 
-        private string outputFolder;
         public string OutputFolder
         {
-            get { return outputFolder; }
-            set { outputFolder = value; outputFolderTB.Text = value; }
+            get { return Settings.OutputFolderPath; }
+            set { Settings.OutputFolderPath = value; SaveSettings(Settings); outputFolderTB.Text = value; }
         }
 
-        IEnumerable<string> inputFolders;
+        private IEnumerable<string> inputFolders;
+
+        private Settings Settings;
 
         public MainWindow()
         {
             InitializeComponent();
-            FFmpegPath = @"C:\Users\Public\Programy\FFMpeg\ffmpeg-4.2.1-win64-static\bin\ffmpeg.exe";
-            OutputFolder = @"D:\Kamera";
+            Settings = GetSettings();
+            outputFolderTB.Text = Settings.OutputFolderPath;
+            ffmpegPathTB.Text = Settings.FFmpegPath;
         }
 
         private void ChooseInputFolders_Click(object sender, RoutedEventArgs e)
         {
             ShowFileDialog(dialog =>
             {
-                dialog.InitialDirectory = @"C:\";
                 dialog.IsFolderPicker = true;
                 dialog.Multiselect = true;
             }, dialog => inputFolders = dialog.FileNames.ToList());
@@ -59,7 +61,7 @@ namespace CameraH264ToMp4
         {
             ShowFileDialog(dialog =>
             {
-                dialog.InitialDirectory = @"D:\Kamera";
+                dialog.InitialDirectory = Settings.OutputFolderPath;
                 dialog.IsFolderPicker = true;
                 dialog.Multiselect = false;
             }, dialog => OutputFolder = dialog.FileName);
@@ -77,45 +79,99 @@ namespace CameraH264ToMp4
 
         private async void Start_Click(object sender, RoutedEventArgs e)
         {
+            if (string.IsNullOrEmpty(FFmpegPath))
+            {
+                progressTB.Text = "Can't find ffmpeg.exe";
+                return;
+            }
+            if (string.IsNullOrEmpty(OutputFolder))
+            {
+                progressTB.Text = "Please choose output folder";
+                return;
+            }
+            if (inputFolders == null || inputFolders.Count() == 0)
+            {
+                progressTB.Text = "Please choose input folder(s)";
+                return;
+            }
+
             var ffmpeg = new FFmpeg(FFmpegPath);
 
-            foreach (var dayFolder in inputFolders)
+            try
             {
-                var folderName = Path.GetFileName(dayFolder);
-                //var outputFilePath = Path.Combine(dayFolder, $"{folderName}.mp4");
-                var allDayFiles = new List<string>();
-                var hourFolders = Directory.EnumerateDirectories(dayFolder);
-                int folderNr = 1;
-                foreach (var hourFolder in hourFolders)
+                foreach (var dayFolder in inputFolders)
                 {
-                    progressTB.Dispatcher.Invoke(() => { progressTB.Text = $"{folderNr}/{hourFolders.Count()}"; });
-                    folderNr++;
-                    var hour = Path.GetFileName(hourFolder);
-                    var files = Directory.EnumerateFiles(hourFolder).Where(x => Path.GetExtension(x) == ".h264");
-                    if (files.Any())
+                    var folderName = Path.GetFileName(dayFolder);
+                    var allDayFiles = new List<string>();
+                    var hourFolders = Directory.EnumerateDirectories(dayFolder);
+                    int folderNr = 1;
+                    foreach (var hourFolder in hourFolders)
                     {
-                        allDayFiles.AddRange(files);
-
-                        var progress = new Progress<double>(p =>
+                        progressTB.Dispatcher.Invoke(() => { progressTB.Text = $"{folderNr}/{hourFolders.Count()}"; });
+                        folderNr++;
+                        var hour = Path.GetFileName(hourFolder);
+                        var files = Directory.EnumerateFiles(hourFolder).Where(x => Path.GetExtension(x) == ".h264");
+                        if (files.Any())
                         {
-                            System.Diagnostics.Debug.WriteLine($"Progress {p}");
-                            var progress = $"{p}/{files.Count()}";
-                            progressTB.Dispatcher.Invoke(() => { progressTB.Text = progress; });
-                        });
+                            allDayFiles.AddRange(files);
 
-                        var outputFolderPath = Path.Combine(OutputFolder, folderName);
-                        var hourOutputFilePath = Path.Combine(outputFolderPath, $"{folderName}-{hour}.mp4");
-                        Directory.CreateDirectory(outputFolderPath);
-                        var hourArgs = $"-i \"concat:{string.Join('|', files)}\" -c copy -y -nostdin {hourOutputFilePath}";
-                        await ffmpeg.ExecuteMuxAsync(hourArgs);
+                            var progress = new Progress<double>(p =>
+                            {
+                                var progress = $"{p}/{files.Count()}";
+                                progressTB.Dispatcher.Invoke(() => { progressTB.Text = progress; });
+                            });
+
+                            var outputFolderPath = Path.Combine(OutputFolder, folderName);
+                            var hourOutputFilePath = Path.Combine(outputFolderPath, $"{folderName}-{hour}.mp4");
+                            Directory.CreateDirectory(outputFolderPath);
+                            var hourArgs = $"-i \"concat:{string.Join('|', files)}\" -c copy -y -nostdin {hourOutputFilePath}";
+                            await ffmpeg.ExecuteMuxAsync(hourArgs);
+                        }
                     }
                 }
+            }
+            catch (Exception ex)
+            {
 
-                //var args = $"-i \"concat:{string.Join('|', allDayFiles)}\" -c copy -y -nostdin {outputFilePath}";
-                //await ffmpeg.ExecuteMuxAsync(args);
             }
 
             progressTB.Dispatcher.Invoke(() => { progressTB.Text = "Done"; });
         }
+
+        private void SaveSettings(Settings settings)
+        {
+            try
+            {
+                var jsonString = JsonSerializer.Serialize(settings);
+                File.WriteAllText("settings.json", jsonString);
+            }
+            catch (Exception ex)
+            {
+            }
+        }
+
+        private Settings GetSettings()
+        {
+            try
+            {
+                var text = File.ReadAllText("settings.json");
+                return JsonSerializer.Deserialize<Settings>(text);
+            }
+            catch (Exception ex)
+            {
+                return new Settings() { FFmpegPath = "ffmpeg.exe" };
+            }
+        }
+
+        private void OpenOutputFolderInExplorer_Click(object sender, RoutedEventArgs e)
+        {
+            Process.Start("explorer.exe", OutputFolder);
+        }
+    }
+
+    public class Settings
+    {
+        public string FFmpegPath { get; set; }
+        public string OutputFolderPath { get; set; }
     }
 }

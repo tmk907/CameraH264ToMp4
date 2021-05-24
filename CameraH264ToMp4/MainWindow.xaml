@@ -23,12 +23,14 @@
             <TextBlock x:Name="ffmpegPathTB" />
 
             <Button Click="ChooseInputFolders_Click" Content="Input folders" />
-            <TextBlock x:Name="progressTB" />
 
             <Button Click="ChooseOutputFolder_Click" Content="Output folder" />
             <TextBlock x:Name="outputFolderTB" />
 
             <Button Click="Start_Click" Content="Start" />
+            <TextBlock x:Name="progressTB" />
+
+            <Button Click="OpenOutputFolderInExplorer_Click" Content="Open output folder" />
         </StackPanel>
     </Grid>
 </Window>
